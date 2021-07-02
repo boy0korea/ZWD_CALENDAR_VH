@@ -41,6 +41,7 @@ public section.
       !CT_FIELD_DESCR_SEARCH type FPMGB_T_SEARCHFIELD_DESCR optional .
   class-methods WD_SET_VH_TO_ALL
     importing
+      !IO_COMPONENT type ref to IF_WD_COMPONENT
       !IO_CONTEXT type ref to IF_WD_CONTEXT_NODE .
   PROTECTED SECTION.
 
@@ -293,22 +294,23 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
 
   METHOD open_popup.
-    DATA: lo_comp_usage TYPE REF TO if_wd_component_usage,
-          lo_wd_comp    LIKE go_wd_comp.
+    DATA: lo_comp_usage TYPE REF TO if_wd_component_usage.
 
-    cl_wdr_runtime_services=>get_component_usage(
-      EXPORTING
-        component            = wdr_task=>application->component
-        used_component_name  = gv_wd_comp_id
-        component_usage_name = gv_wd_comp_id
-        create_component     = abap_true
-        do_create            = abap_true
-      RECEIVING
-        component_usage      = lo_comp_usage
-    ).
+    IF go_wd_comp IS INITIAL.
+      cl_wdr_runtime_services=>get_component_usage(
+        EXPORTING
+          component            = wdr_task=>application->component
+          used_component_name  = gv_wd_comp_id
+          component_usage_name = gv_wd_comp_id
+          create_component     = abap_true
+          do_create            = abap_true
+        RECEIVING
+          component_usage      = lo_comp_usage
+      ).
+      go_wd_comp ?= lo_comp_usage->get_interface_controller( ).
+    ENDIF.
 
-    lo_wd_comp ?= lo_comp_usage->get_interface_controller( ).
-    lo_wd_comp->open_popup(
+    go_wd_comp->open_popup(
         io_param = io_param
     ).
   ENDMETHOD.
@@ -396,7 +398,7 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
     " regist comp usage
     cl_wdr_runtime_services=>get_component_usage(
       EXPORTING
-        component            = wdr_task=>application->component
+        component            = io_component
         used_component_name  = gv_wd_comp_id
         component_usage_name = gv_wd_comp_id
         create_component     = abap_true
