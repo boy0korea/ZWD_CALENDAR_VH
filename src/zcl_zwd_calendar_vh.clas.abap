@@ -6,7 +6,10 @@ class ZCL_ZWD_CALENDAR_VH definition
 public section.
 
   data MO_PARAM type ref to IF_FPM_PARAMETER .
+  class-data GV_WD_COMP_ID type STRING read-only .
+  class-data GO_WD_COMP type ref to ZIWCI_WD_CALENDAR_VH read-only .
 
+  class-methods CLASS_CONSTRUCTOR .
   methods ON_OK
     importing
       !IV_LOW type DATUM
@@ -28,13 +31,34 @@ public section.
   class-methods OPEN_POPUP
     importing
       !IO_PARAM type ref to IF_FPM_PARAMETER optional .
+  class-methods FPM_SET_VH_TO_ALL
+    importing
+      !IO_FIELD_CATALOG type ref to CL_ABAP_TYPEDESCR
+    changing
+      !CT_FIELD_DESCR_FORM type FPMGB_T_FORMFIELD_DESCR optional
+      !CT_FIELD_DESCR_LIST type FPMGB_T_LISTFIELD_DESCR optional
+      !CT_FIELD_DESCR_TREE type FPMGB_T_TREEFIELD_DESCR optional
+      !CT_FIELD_DESCR_SEARCH type FPMGB_T_SEARCHFIELD_DESCR optional .
+  class-methods WD_SET_VH_TO_ALL
+    importing
+      !IO_CONTEXT type ref to IF_WD_CONTEXT_NODE .
   PROTECTED SECTION.
+
+    CLASS-METHODS wd_set_vh_recur
+      IMPORTING
+        !io_node_info TYPE REF TO if_wd_context_node_info .
   PRIVATE SECTION.
 ENDCLASS.
 
 
 
 CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
+
+
+  METHOD class_constructor.
+    gv_wd_comp_id = CAST cl_abap_refdescr( cl_abap_typedescr=>describe_by_data( go_wd_comp ) )->get_referenced_type( )->get_relative_name( ).
+    REPLACE 'IWCI_' IN gv_wd_comp_id WITH ''.
+  ENDMETHOD.
 
 
   METHOD fpm_date_popup.
@@ -70,6 +94,86 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
     ).
 
     open_popup( lo_param ).
+  ENDMETHOD.
+
+
+  METHOD FPM_SET_VH_TO_ALL.
+    DATA: lo_rtti               TYPE REF TO cl_abap_structdescr,
+          lt_field_descr_form	  TYPE fpmgb_t_formfield_descr,
+          lt_field_descr_list	  TYPE fpmgb_t_listfield_descr,
+          lt_field_descr_tree	  TYPE fpmgb_t_treefield_descr,
+          lt_field_descr_search	TYPE fpmgb_t_searchfield_descr.
+
+    " rtti
+    CASE io_field_catalog->type_kind.
+      WHEN cl_abap_typedescr=>typekind_struct1
+        OR cl_abap_typedescr=>typekind_struct2.
+        lo_rtti ?= io_field_catalog.
+      WHEN cl_abap_typedescr=>typekind_table.
+        lo_rtti ?= CAST cl_abap_tabledescr( io_field_catalog )->get_table_line_type( ).
+      WHEN OTHERS.
+    ENDCASE.
+
+
+    " loop comp
+    LOOP AT lo_rtti->components INTO DATA(ls_comp) WHERE type_kind = cl_abap_typedescr=>typekind_date.
+      IF ct_field_descr_form IS SUPPLIED.
+        READ TABLE ct_field_descr_form ASSIGNING FIELD-SYMBOL(<ls_fd_form>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        IF sy-subrc EQ 0.
+          <ls_fd_form>-wd_value_help = gv_wd_comp_id.
+        ELSE.
+          APPEND INITIAL LINE TO lt_field_descr_form ASSIGNING <ls_fd_form>.
+          <ls_fd_form>-name = ls_comp-name.
+          <ls_fd_form>-wd_value_help = gv_wd_comp_id.
+        ENDIF.
+      ENDIF.
+      IF ct_field_descr_list IS SUPPLIED.
+        READ TABLE ct_field_descr_list ASSIGNING FIELD-SYMBOL(<ls_fd_list>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        IF sy-subrc EQ 0.
+          <ls_fd_list>-wd_value_help = gv_wd_comp_id.
+        ELSE.
+          APPEND INITIAL LINE TO lt_field_descr_list ASSIGNING <ls_fd_list>.
+          <ls_fd_list>-name = ls_comp-name.
+          <ls_fd_list>-wd_value_help = gv_wd_comp_id.
+        ENDIF.
+      ENDIF.
+      IF ct_field_descr_tree IS SUPPLIED.
+        READ TABLE ct_field_descr_tree ASSIGNING FIELD-SYMBOL(<ls_fd_tree>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        IF sy-subrc EQ 0.
+          <ls_fd_tree>-wd_value_help = gv_wd_comp_id.
+        ELSE.
+          APPEND INITIAL LINE TO lt_field_descr_tree ASSIGNING <ls_fd_tree>.
+          <ls_fd_tree>-name = ls_comp-name.
+          <ls_fd_tree>-wd_value_help = gv_wd_comp_id.
+        ENDIF.
+      ENDIF.
+      IF ct_field_descr_search IS SUPPLIED.
+        READ TABLE ct_field_descr_search ASSIGNING FIELD-SYMBOL(<ls_fd_search>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        IF sy-subrc EQ 0.
+          <ls_fd_search>-wd_value_help = gv_wd_comp_id.
+        ELSE.
+          APPEND INITIAL LINE TO lt_field_descr_search ASSIGNING <ls_fd_search>.
+          <ls_fd_search>-name = ls_comp-name.
+          <ls_fd_search>-wd_value_help = gv_wd_comp_id.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
+
+    " append
+    IF lt_field_descr_form IS NOT INITIAL.
+      APPEND LINES OF lt_field_descr_form TO ct_field_descr_form.
+    ENDIF.
+    IF lt_field_descr_list IS NOT INITIAL.
+      APPEND LINES OF lt_field_descr_list TO ct_field_descr_list.
+    ENDIF.
+    IF lt_field_descr_tree IS NOT INITIAL.
+      APPEND LINES OF lt_field_descr_tree TO ct_field_descr_tree.
+    ENDIF.
+    IF lt_field_descr_search IS NOT INITIAL.
+      APPEND LINES OF lt_field_descr_search TO ct_field_descr_search.
+    ENDIF.
+
   ENDMETHOD.
 
 
@@ -188,15 +292,15 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD OPEN_POPUP.
+  METHOD open_popup.
     DATA: lo_comp_usage TYPE REF TO if_wd_component_usage,
-          lo_wd_comp    TYPE REF TO ziwci_wd_calendar_vh.
+          lo_wd_comp    LIKE go_wd_comp.
 
     cl_wdr_runtime_services=>get_component_usage(
       EXPORTING
         component            = wdr_task=>application->component
-        used_component_name  = 'ZWD_CALENDAR_VH'
-        component_usage_name = 'ZWD_CALENDAR_VH'
+        used_component_name  = gv_wd_comp_id
+        component_usage_name = gv_wd_comp_id
         create_component     = abap_true
         do_create            = abap_true
       RECEIVING
@@ -210,7 +314,7 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD WD_DATE_POPUP.
+  METHOD wd_date_popup.
     DATA: lo_param TYPE REF TO if_fpm_parameter.
 
     CREATE OBJECT lo_param TYPE cl_fpm_parameter.
@@ -255,5 +359,57 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
     ).
 
     open_popup( lo_param ).
+  ENDMETHOD.
+
+
+  METHOD wd_set_vh_recur.
+    DATA: lt_attr_info       TYPE wdr_context_attr_info_map,
+          ls_attr_info       TYPE wdr_context_attribute_info,
+          lt_child_node_info TYPE wdr_context_child_info_map,
+          ls_child_node_info TYPE wdr_context_child_info.
+
+    lt_attr_info = io_node_info->get_attributes( ).
+    LOOP AT lt_attr_info INTO ls_attr_info.
+      IF ls_attr_info-rtti->type_kind EQ cl_abap_typedescr=>typekind_date AND
+         ls_attr_info-value_help_mode EQ if_wd_context_node_info=>c_value_help_mode-automatic.
+        io_node_info->set_attribute_value_help(
+          EXPORTING
+            name            = ls_attr_info-name
+            value_help_mode = if_wd_context_node_info=>c_value_help_mode-application_defined
+            value_help      = gv_wd_comp_id
+        ).
+      ENDIF.
+    ENDLOOP.
+
+    lt_child_node_info = io_node_info->get_child_nodes( ).
+    LOOP AT lt_child_node_info INTO ls_child_node_info.
+      wd_set_vh_recur( ls_child_node_info-node_info ).
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD wd_set_vh_to_all.
+    DATA: lo_node_info TYPE REF TO if_wd_context_node_info,
+          lt_attr_info TYPE wdr_context_attr_info_map,
+          ls_attr_info TYPE wdr_context_attribute_info.
+
+    " regist comp usage
+    cl_wdr_runtime_services=>get_component_usage(
+      EXPORTING
+        component            = wdr_task=>application->component
+        used_component_name  = gv_wd_comp_id
+        component_usage_name = gv_wd_comp_id
+        create_component     = abap_true
+        do_create            = abap_true
+    ).
+
+    " set value help
+*    wd_context->get_node_info( )->set_attribute_value_help(
+*      EXPORTING
+*        name            = 'DATE'
+*        value_help_mode = if_wd_context_node_info=>c_value_help_mode-application_defined
+*        value_help      = gv_wd_comp_id
+*    ).
+    wd_set_vh_recur( io_node_info = io_context->get_node_info( ) ).
   ENDMETHOD.
 ENDCLASS.
