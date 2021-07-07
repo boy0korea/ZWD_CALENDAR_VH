@@ -141,7 +141,10 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
             er_value = lr_value
         ).
         CASE cl_abap_typedescr=>describe_by_data_ref( lr_value )->type_kind.
-          WHEN cl_abap_typedescr=>typekind_dref.
+          WHEN cl_abap_typedescr=>typekind_dref
+            OR cl_abap_typedescr=>typekind_struct1
+            OR cl_abap_typedescr=>typekind_struct2
+            OR cl_abap_typedescr=>typekind_table.
             CLEAR: ls_param.
             ls_param-name = lv_key.
             ls_param-dref = lr_value.
@@ -154,19 +157,11 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
             ls_param-type = cl_abap_typedescr=>typekind_oref.
             APPEND ls_param TO lt_param.
           WHEN OTHERS.
-            TRY.
-                CLEAR: ls_param.
-                ls_param-name = lv_key.
-                ASSIGN lr_value->* TO <lv_data>.
-                ls_param-value = <lv_data>.
-                APPEND ls_param TO lt_param.
-              CATCH cx_root.
-                CLEAR: ls_param.
-                ls_param-name = lv_key.
-                ls_param-dref = lr_value.
-                ls_param-type = cl_abap_typedescr=>typekind_dref.
-                APPEND ls_param TO lt_param.
-            ENDTRY.
+            CLEAR: ls_param.
+            ls_param-name = lv_key.
+            ASSIGN lr_value->* TO <lv_data>.
+            ls_param-value = <lv_data>.
+            APPEND ls_param TO lt_param.
         ENDCASE.
       ENDLOOP.
 

@@ -7,6 +7,7 @@
    <FOLDER_LOGIC>PREFIX</FOLDER_LOGIC>
    <IGNORE>
     <item>*.sicf.xml</item>
+    <item>/src/zwd_calendar_vh.wdyn.xml</item>
    </IGNORE>
   </DATA>
  </asx:values>
