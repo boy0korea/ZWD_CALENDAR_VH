@@ -1,53 +1,54 @@
-class ZCL_ZWD_CALENDAR_VH definition
-  public
-  inheriting from CL_WD_COMPONENT_ASSISTANCE
-  create public .
+CLASS zcl_zwd_calendar_vh DEFINITION
+  PUBLIC
+  INHERITING FROM cl_wd_component_assistance
+  CREATE PUBLIC .
 
-public section.
+  PUBLIC SECTION.
 
-  data MO_PARAM type ref to IF_FPM_PARAMETER .
-  class-data GV_WD_COMP_ID type STRING read-only .
-  class-data GO_WD_COMP type ref to ZIWCI_WD_CALENDAR_VH read-only .
+    DATA mo_event_data TYPE REF TO if_fpm_parameter .
+    CLASS-DATA gv_wd_comp_id TYPE string READ-ONLY .
+    CLASS-DATA go_wd_comp TYPE REF TO ziwci_wd_calendar_vh READ-ONLY .
 
-  class-methods CLASS_CONSTRUCTOR .
-  methods ON_OK
-    importing
-      !IV_LOW type DATUM
-      !IV_HIGH type DATUM optional .
-  class-methods FPM_DATE_POPUP
-    importing
-      !IV_CALLBACK_EVENT_ID type FPM_EVENT_ID default 'ZDATE_POPUP' .
-  class-methods FPM_DATE_RANGE_POPUP
-    importing
-      !IV_CALLBACK_EVENT_ID type FPM_EVENT_ID default 'ZDATE_POPUP' .
-  class-methods WD_DATE_POPUP
-    importing
-      !IV_CALLBACK_ACTION type STRING
-      !IO_VIEW type ref to IF_WD_VIEW_CONTROLLER .
-  class-methods WD_DATE_RANGE_POPUP
-    importing
-      !IV_CALLBACK_ACTION type STRING
-      !IO_VIEW type ref to IF_WD_VIEW_CONTROLLER .
-  class-methods OPEN_POPUP
-    importing
-      !IO_PARAM type ref to IF_FPM_PARAMETER optional .
-  class-methods FPM_SET_VH_TO_ALL
-    importing
-      !IO_FIELD_CATALOG type ref to CL_ABAP_TYPEDESCR
-    changing
-      !CT_FIELD_DESCR_FORM type FPMGB_T_FORMFIELD_DESCR optional
-      !CT_FIELD_DESCR_LIST type FPMGB_T_LISTFIELD_DESCR optional
-      !CT_FIELD_DESCR_TREE type FPMGB_T_TREEFIELD_DESCR optional
-      !CT_FIELD_DESCR_SEARCH type FPMGB_T_SEARCHFIELD_DESCR optional .
-  class-methods WD_SET_VH_TO_ALL
-    importing
-      !IO_COMPONENT type ref to IF_WD_COMPONENT
-      !IO_CONTEXT type ref to IF_WD_CONTEXT_NODE .
+    CLASS-METHODS class_constructor .
+    METHODS on_ok
+      IMPORTING
+        !iv_low  TYPE datum
+        !iv_high TYPE datum OPTIONAL .
+    CLASS-METHODS fpm_date_popup
+      IMPORTING
+        !iv_callback_event_id TYPE fpm_event_id DEFAULT 'ZDATE_POPUP' .
+    CLASS-METHODS fpm_date_range_popup
+      IMPORTING
+        !iv_callback_event_id TYPE fpm_event_id DEFAULT 'ZDATE_POPUP' .
+    CLASS-METHODS wd_date_popup
+      IMPORTING
+        !iv_callback_action TYPE string
+        !io_view            TYPE REF TO if_wd_view_controller .
+    CLASS-METHODS wd_date_range_popup
+      IMPORTING
+        !iv_callback_action TYPE string
+        !io_view            TYPE REF TO if_wd_view_controller .
+    CLASS-METHODS open_popup
+      IMPORTING
+        !io_event_data TYPE REF TO if_fpm_parameter OPTIONAL .
+    CLASS-METHODS fpm_set_vh_to_all
+      IMPORTING
+        !io_field_catalog      TYPE REF TO cl_abap_typedescr
+      CHANGING
+        !ct_field_descr_form   TYPE fpmgb_t_formfield_descr OPTIONAL
+        !ct_field_descr_list   TYPE fpmgb_t_listfield_descr OPTIONAL
+        !ct_field_descr_tree   TYPE fpmgb_t_treefield_descr OPTIONAL
+        !ct_field_descr_search TYPE fpmgb_t_searchfield_descr OPTIONAL .
+    CLASS-METHODS wd_set_vh_to_all
+      IMPORTING
+        !io_component TYPE REF TO if_wd_component
+        !io_context   TYPE REF TO if_wd_context_node .
   PROTECTED SECTION.
 
     CLASS-METHODS wd_set_vh_recur
       IMPORTING
         !io_node_info TYPE REF TO if_wd_context_node_info .
+    METHODS do_callback .
   PRIVATE SECTION.
 ENDCLASS.
 
@@ -62,43 +63,157 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD do_callback.
+    DATA: lv_event_id TYPE fpm_event_id,
+          lo_fpm      TYPE REF TO if_fpm,
+          lo_event    TYPE REF TO cl_fpm_event,
+          lt_key      TYPE TABLE OF string,
+          lv_key      TYPE string,
+          lr_value    TYPE REF TO data,
+          lv_action   TYPE string,
+          lo_view     TYPE REF TO cl_wdr_view,
+          lo_action   TYPE REF TO if_wdr_action,
+          lt_param    TYPE wdr_name_value_list,
+          ls_param    TYPE wdr_name_value.
+    FIELD-SYMBOLS: <lv_data> TYPE data.
+
+
+**********************************************************************
+* FPM
+**********************************************************************
+    mo_event_data->get_value(
+      EXPORTING
+        iv_key   = 'IV_CALLBACK_EVENT_ID'
+      IMPORTING
+        ev_value = lv_event_id
+    ).
+    IF lv_event_id IS NOT INITIAL.
+
+      lo_fpm = cl_fpm=>get_instance( ).
+      CHECK: lo_fpm IS NOT INITIAL.
+
+      lo_fpm->raise_event_by_id(
+        EXPORTING
+          iv_event_id   = lv_event_id   " This defines the ID of the FPM Event
+          io_event_data = mo_event_data " Property Bag
+      ).
+
+    ENDIF.
+
+**********************************************************************
+* WD
+**********************************************************************
+    mo_event_data->get_value(
+      EXPORTING
+        iv_key   = 'IV_CALLBACK_ACTION'
+      IMPORTING
+        ev_value = lv_action
+    ).
+    IF lv_action IS NOT INITIAL.
+
+      mo_event_data->get_value(
+        EXPORTING
+          iv_key   = 'IO_VIEW'
+        IMPORTING
+          ev_value = lo_view
+      ).
+      CHECK: lo_view IS NOT INITIAL.
+
+      TRY.
+          lo_action = lo_view->get_action_internal( lv_action ).
+        CATCH cx_wdr_runtime INTO DATA(lx_wdr_runtime).
+          zcl_abap2xlsx_helper=>message( lx_wdr_runtime->get_text( ) ).
+      ENDTRY.
+      CHECK: lo_action IS NOT INITIAL.
+
+      CLEAR: ls_param.
+      ls_param-name = 'MO_EVENT_DATA'.
+      ls_param-dref = REF #( mo_event_data ).
+      ls_param-type = 'r'.
+      APPEND ls_param TO lt_param.
+
+      lt_key = mo_event_data->get_keys( ).
+      LOOP AT lt_key INTO lv_key.
+        mo_event_data->get_value(
+          EXPORTING
+            iv_key   = lv_key
+          IMPORTING
+            er_value = lr_value
+        ).
+        CASE cl_abap_typedescr=>describe_by_data_ref( lr_value )->type_kind.
+          WHEN cl_abap_typedescr=>typekind_dref.
+            CLEAR: ls_param.
+            ls_param-name = lv_key.
+            ls_param-dref = lr_value.
+            ls_param-type = cl_abap_typedescr=>typekind_dref.
+            APPEND ls_param TO lt_param.
+          WHEN cl_abap_typedescr=>typekind_oref.
+            CLEAR: ls_param.
+            ls_param-name = lv_key.
+            ls_param-dref = lr_value.
+            ls_param-type = cl_abap_typedescr=>typekind_oref.
+            APPEND ls_param TO lt_param.
+          WHEN OTHERS.
+            TRY.
+                CLEAR: ls_param.
+                ls_param-name = lv_key.
+                ASSIGN lr_value->* TO <lv_data>.
+                ls_param-value = <lv_data>.
+                APPEND ls_param TO lt_param.
+              CATCH cx_root.
+                CLEAR: ls_param.
+                ls_param-name = lv_key.
+                ls_param-dref = lr_value.
+                ls_param-type = cl_abap_typedescr=>typekind_dref.
+                APPEND ls_param TO lt_param.
+            ENDTRY.
+        ENDCASE.
+      ENDLOOP.
+
+      lo_action->set_parameters( lt_param ).
+      lo_action->fire( ).
+
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD fpm_date_popup.
-    DATA: lo_param TYPE REF TO if_fpm_parameter.
+    DATA: lo_event_data TYPE REF TO if_fpm_parameter.
 
-    CREATE OBJECT lo_param TYPE cl_fpm_parameter.
+    CREATE OBJECT lo_event_data TYPE cl_fpm_parameter.
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IV_CALLBACK_EVENT_ID'
         iv_value = iv_callback_event_id
     ).
 
-    open_popup( lo_param ).
+    open_popup( lo_event_data ).
   ENDMETHOD.
 
 
   METHOD fpm_date_range_popup.
-    DATA: lo_param TYPE REF TO if_fpm_parameter.
+    DATA: lo_event_data TYPE REF TO if_fpm_parameter.
 
-    CREATE OBJECT lo_param TYPE cl_fpm_parameter.
+    CREATE OBJECT lo_event_data TYPE cl_fpm_parameter.
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IV_CALLBACK_EVENT_ID'
         iv_value = iv_callback_event_id
     ).
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IV_DATE_RANGE'
         iv_value = abap_true
     ).
 
-    open_popup( lo_param ).
+    open_popup( lo_event_data ).
   ENDMETHOD.
 
 
-  METHOD FPM_SET_VH_TO_ALL.
+  METHOD fpm_set_vh_to_all.
     DATA: lo_rtti               TYPE REF TO cl_abap_structdescr,
           lt_field_descr_form	  TYPE fpmgb_t_formfield_descr,
           lt_field_descr_list	  TYPE fpmgb_t_listfield_descr,
@@ -179,17 +294,11 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
 
   METHOD on_ok.
-    DATA: lv_event_id   TYPE fpm_event_id,
-          lo_fpm        TYPE REF TO if_fpm,
-          lo_event      TYPE REF TO cl_fpm_event,
-          lv_action     TYPE string,
-          lo_view       TYPE REF TO cl_wdr_view,
-          lo_action     TYPE REF TO if_wdr_action,
-          lt_param      TYPE wdr_name_value_list,
-          lv_date_range TYPE flag,
+    DATA: lv_date_range TYPE flag,
           lt_date_range TYPE date_t_range.
 
-    mo_param->get_value(
+
+    mo_event_data->get_value(
       EXPORTING
         iv_key   = 'IV_DATE_RANGE'
       IMPORTING
@@ -201,94 +310,27 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
       ELSE.
         lt_date_range = VALUE #( ( sign = 'I' option = 'BT' low = iv_low high = iv_high ) ).
       ENDIF.
-    ENDIF.
-
-**********************************************************************
-* FPM
-**********************************************************************
-    mo_param->get_value(
-      EXPORTING
-        iv_key   = 'IV_CALLBACK_EVENT_ID'
-      IMPORTING
-        ev_value = lv_event_id
-    ).
-    IF lv_event_id IS NOT INITIAL.
-
-      lo_fpm = cl_fpm=>get_instance( ).
-      CHECK: lo_fpm IS NOT INITIAL.
-
-      CREATE OBJECT lo_event
+      mo_event_data->set_value(
         EXPORTING
-          iv_event_id = lv_event_id         " This defines the ID of the FPM Event
-*         iv_is_validating    = iv_is_validating    " Defines, whether checks need to be performed or not
-*         iv_is_transactional = iv_is_transactional " Defines, whether IF_FPM_TRANSACTION is to be processed
-*         iv_adapts_context   = iv_adapts_context   " Event changes the adaptation context
-*         iv_framework_event  = iv_framework_event  " Event is raised by FPM and not by user or appl. code
-*         is_source_uibb      = is_source_uibb      " Source UIBB of Event
-*         io_event_data       = io_event_data       " Data for processing
-        .
-
-      IF lv_date_range EQ abap_true.
-        lo_event->mo_event_data->set_value(
-          EXPORTING
-            iv_key   = 'IT_DATE_RANGE'
-            iv_value = lt_date_range
-        ).
-      ELSE.
-        lo_event->mo_event_data->set_value(
-          EXPORTING
-            iv_key   = 'IV_DATE'
-            iv_value = iv_low
-        ).
-      ENDIF.
-
-      lo_fpm->raise_event( lo_event ).
-
-    ENDIF.
-
-**********************************************************************
-* WD
-**********************************************************************
-    mo_param->get_value(
-      EXPORTING
-        iv_key   = 'IV_CALLBACK_ACTION'
-      IMPORTING
-        ev_value = lv_action
-    ).
-    IF lv_action IS NOT INITIAL.
-
-      mo_param->get_value(
-        EXPORTING
-          iv_key   = 'IO_VIEW'
-        IMPORTING
-          ev_value = lo_view
+          iv_key   = 'ET_DATE_RANGE'
+          iv_value = lt_date_range
       ).
-      CHECK: lo_view IS NOT INITIAL.
-
-      TRY.
-          lo_action = lo_view->get_action_internal( lv_action ).
-        CATCH cx_wdr_runtime INTO DATA(lx_wdr_runtime).
-          zcl_abap2xlsx_helper=>message( lx_wdr_runtime->get_text( ) ).
-      ENDTRY.
-      CHECK: lo_action IS NOT INITIAL.
-
-
-      IF lv_date_range EQ abap_true.
-        lo_action->set_name( 'IT_DATE_RANGE' ).
-        lt_param = VALUE #(
-          ( name = 'IT_DATE_RANGE' dref = REF #( lt_date_range ) type = 'l' )
-        ).
-      ELSE.
-        lo_action->set_name( 'IV_DATE' ).
-        lt_param = VALUE #(
-          ( name = 'IV_DATE' dref = REF #( iv_low ) type = 'l' )
-        ).
-      ENDIF.
-      lo_action->set_parameters( lt_param ).
-      lo_action->fire( ).
-
-
+    ELSE.
+      mo_event_data->set_value(
+        EXPORTING
+          iv_key   = 'EV_DATE'
+          iv_value = iv_low
+      ).
     ENDIF.
+*
+*    DATA: lt_callstack    TYPE  abap_callstack.
+*    CALL FUNCTION 'SYSTEM_CALLSTACK'
+*      EXPORTING
+*        max_level = 1
+*      IMPORTING
+*        callstack = lt_callstack.
+
+    do_callback( ).
 
   ENDMETHOD.
 
@@ -311,56 +353,56 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
     ENDIF.
 
     go_wd_comp->open_popup(
-        io_param = io_param
+        io_event_data = io_event_data
     ).
   ENDMETHOD.
 
 
   METHOD wd_date_popup.
-    DATA: lo_param TYPE REF TO if_fpm_parameter.
+    DATA: lo_event_data TYPE REF TO if_fpm_parameter.
 
-    CREATE OBJECT lo_param TYPE cl_fpm_parameter.
+    CREATE OBJECT lo_event_data TYPE cl_fpm_parameter.
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IV_CALLBACK_ACTION'
         iv_value = iv_callback_action
     ).
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IO_VIEW'
         iv_value = CAST cl_wdr_view( io_view )
     ).
 
-    open_popup( lo_param ).
+    open_popup( lo_event_data ).
   ENDMETHOD.
 
 
   METHOD wd_date_range_popup.
-    DATA: lo_param TYPE REF TO if_fpm_parameter.
+    DATA: lo_event_data TYPE REF TO if_fpm_parameter.
 
-    CREATE OBJECT lo_param TYPE cl_fpm_parameter.
+    CREATE OBJECT lo_event_data TYPE cl_fpm_parameter.
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IV_CALLBACK_ACTION'
         iv_value = iv_callback_action
     ).
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IO_VIEW'
         iv_value = CAST cl_wdr_view( io_view )
     ).
 
-    lo_param->set_value(
+    lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IV_DATE_RANGE'
         iv_value = abap_true
     ).
 
-    open_popup( lo_param ).
+    open_popup( lo_event_data ).
   ENDMETHOD.
 
 
