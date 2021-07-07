@@ -75,7 +75,6 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
           lo_action   TYPE REF TO if_wdr_action,
           lt_param    TYPE wdr_name_value_list,
           ls_param    TYPE wdr_name_value.
-    FIELD-SYMBOLS: <lv_data> TYPE data.
 
 
 **********************************************************************
@@ -128,8 +127,8 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
       CLEAR: ls_param.
       ls_param-name = 'MO_EVENT_DATA'.
-      ls_param-dref = REF #( mo_event_data ).
-      ls_param-type = 'r'.
+      ls_param-object = mo_event_data.
+      ls_param-type = cl_abap_typedescr=>typekind_oref.
       APPEND ls_param TO lt_param.
 
       lt_key = mo_event_data->get_keys( ).
@@ -140,29 +139,11 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
           IMPORTING
             er_value = lr_value
         ).
-        CASE cl_abap_typedescr=>describe_by_data_ref( lr_value )->type_kind.
-          WHEN cl_abap_typedescr=>typekind_dref
-            OR cl_abap_typedescr=>typekind_struct1
-            OR cl_abap_typedescr=>typekind_struct2
-            OR cl_abap_typedescr=>typekind_table.
-            CLEAR: ls_param.
-            ls_param-name = lv_key.
-            ls_param-dref = lr_value.
-            ls_param-type = cl_abap_typedescr=>typekind_dref.
-            APPEND ls_param TO lt_param.
-          WHEN cl_abap_typedescr=>typekind_oref.
-            CLEAR: ls_param.
-            ls_param-name = lv_key.
-            ls_param-dref = lr_value.
-            ls_param-type = cl_abap_typedescr=>typekind_oref.
-            APPEND ls_param TO lt_param.
-          WHEN OTHERS.
-            CLEAR: ls_param.
-            ls_param-name = lv_key.
-            ASSIGN lr_value->* TO <lv_data>.
-            ls_param-value = <lv_data>.
-            APPEND ls_param TO lt_param.
-        ENDCASE.
+        CLEAR: ls_param.
+        ls_param-name = lv_key.
+        ls_param-dref = lr_value.
+        ls_param-type = cl_abap_typedescr=>typekind_dref.
+        APPEND ls_param TO lt_param.
       ENDLOOP.
 
       lo_action->set_parameters( lt_param ).
@@ -307,23 +288,42 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
       ENDIF.
       mo_event_data->set_value(
         EXPORTING
-          iv_key   = 'ET_DATE_RANGE'
+          iv_key   = 'IT_DATE_RANGE'
           iv_value = lt_date_range
       ).
     ELSE.
       mo_event_data->set_value(
         EXPORTING
-          iv_key   = 'EV_DATE'
+          iv_key   = 'IV_DATE'
           iv_value = iv_low
       ).
     ENDIF.
-*
-*    DATA: lt_callstack    TYPE  abap_callstack.
-*    CALL FUNCTION 'SYSTEM_CALLSTACK'
-*      EXPORTING
-*        max_level = 1
-*      IMPORTING
-*        callstack = lt_callstack.
+
+
+
+    DATA: lt_callstack   TYPE abap_callstack,
+          ls_callstack   TYPE abap_callstack_line,
+          lo_class_desc  TYPE REF TO cl_abap_classdescr,
+          ls_method_desc TYPE abap_methdescr,
+          ls_param_desc  TYPE abap_parmdescr.
+    FIELD-SYMBOLS: <lv_value> TYPE any.
+
+    CALL FUNCTION 'SYSTEM_CALLSTACK'
+      EXPORTING
+        max_level = 1
+      IMPORTING
+        callstack = lt_callstack.
+    READ TABLE lt_callstack INTO ls_callstack INDEX 1.
+    lo_class_desc ?= cl_abap_classdescr=>describe_by_name( cl_oo_classname_service=>get_clsname_by_include( ls_callstack-include ) ).
+    READ TABLE lo_class_desc->methods INTO ls_method_desc WITH KEY name = ls_callstack-blockname.
+    LOOP AT ls_method_desc-parameters INTO ls_param_desc WHERE parm_kind = cl_abap_classdescr=>importing.
+      ASSIGN (ls_param_desc-name) TO <lv_value>.
+      mo_event_data->set_value(
+        EXPORTING
+          iv_key   = CONV #( ls_param_desc-name )
+          iv_value = <lv_value>
+      ).
+    ENDLOOP.
 
     do_callback( ).
 
