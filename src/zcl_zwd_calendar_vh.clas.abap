@@ -6,20 +6,28 @@ CLASS zcl_zwd_calendar_vh DEFINITION
   PUBLIC SECTION.
 
     DATA mo_event_data TYPE REF TO if_fpm_parameter .
+    DATA mo_comp_usage TYPE REF TO if_wd_component_usage .
     CLASS-DATA gv_wd_comp_id TYPE string READ-ONLY .
     CLASS-DATA go_wd_comp TYPE REF TO ziwci_wd_calendar_vh READ-ONLY .
 
     CLASS-METHODS class_constructor .
+    CLASS-METHODS open_popup
+      IMPORTING
+        !io_event_data TYPE REF TO if_fpm_parameter OPTIONAL .
     METHODS on_ok
       IMPORTING
         !iv_low  TYPE datum
         !iv_high TYPE datum OPTIONAL .
+    METHODS on_close
+        FOR EVENT window_closed OF if_wd_window .
     CLASS-METHODS fpm_date_popup
       IMPORTING
-        !iv_callback_event_id TYPE fpm_event_id DEFAULT 'ZDATE_POPUP' .
+        !iv_callback_event_id TYPE fpm_event_id DEFAULT 'ZDATE_POPUP'
+        !io_event             TYPE REF TO cl_fpm_event OPTIONAL .
     CLASS-METHODS fpm_date_range_popup
       IMPORTING
-        !iv_callback_event_id TYPE fpm_event_id DEFAULT 'ZDATE_POPUP' .
+        !iv_callback_event_id TYPE fpm_event_id DEFAULT 'ZDATE_POPUP'
+        !io_event             TYPE REF TO cl_fpm_event OPTIONAL .
     CLASS-METHODS wd_date_popup
       IMPORTING
         !iv_callback_action TYPE string
@@ -28,9 +36,6 @@ CLASS zcl_zwd_calendar_vh DEFINITION
       IMPORTING
         !iv_callback_action TYPE string
         !io_view            TYPE REF TO if_wd_view_controller .
-    CLASS-METHODS open_popup
-      IMPORTING
-        !io_event_data TYPE REF TO if_fpm_parameter OPTIONAL .
     CLASS-METHODS fpm_set_vh_to_all
       IMPORTING
         !io_field_catalog      TYPE REF TO cl_abap_typedescr
@@ -64,17 +69,18 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
 
   METHOD do_callback.
-    DATA: lv_event_id TYPE fpm_event_id,
-          lo_fpm      TYPE REF TO if_fpm,
-          lo_event    TYPE REF TO cl_fpm_event,
-          lt_key      TYPE TABLE OF string,
-          lv_key      TYPE string,
-          lr_value    TYPE REF TO data,
-          lv_action   TYPE string,
-          lo_view     TYPE REF TO cl_wdr_view,
-          lo_action   TYPE REF TO if_wdr_action,
-          lt_param    TYPE wdr_name_value_list,
-          ls_param    TYPE wdr_name_value.
+    DATA: lv_event_id    TYPE fpm_event_id,
+          lo_fpm         TYPE REF TO if_fpm,
+          lo_event       TYPE REF TO cl_fpm_event,
+          lo_event_start TYPE REF TO cl_fpm_event,
+          lt_key         TYPE TABLE OF string,
+          lv_key         TYPE string,
+          lr_value       TYPE REF TO data,
+          lv_action      TYPE string,
+          lo_view        TYPE REF TO cl_wdr_view,
+          lo_action      TYPE REF TO if_wdr_action,
+          lt_param       TYPE wdr_name_value_list,
+          ls_param       TYPE wdr_name_value.
 
 
 **********************************************************************
@@ -91,13 +97,25 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
       lo_fpm = cl_fpm=>get_instance( ).
       CHECK: lo_fpm IS NOT INITIAL.
 
-      lo_fpm->raise_event_by_id(
+      CREATE OBJECT lo_event
         EXPORTING
-          iv_event_id   = lv_event_id   " This defines the ID of the FPM Event
-          io_event_data = mo_event_data " Property Bag
+          iv_event_id   = lv_event_id
+          io_event_data = mo_event_data.
+
+      mo_event_data->get_value(
+        EXPORTING
+          iv_key   = 'IO_EVENT'
+        IMPORTING
+          ev_value = lo_event_start
       ).
+      IF lo_event_start IS NOT INITIAL.
+        lo_event->ms_source_uibb = lo_event_start->ms_source_uibb.
+      ENDIF.
+
+      lo_fpm->raise_event( lo_event ).
 
     ENDIF.
+
 
 **********************************************************************
 * WD
@@ -164,6 +182,15 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         iv_value = iv_callback_event_id
     ).
 
+    IF io_event IS NOT INITIAL.
+      lo_event_data->set_value(
+        EXPORTING
+          iv_key   = 'IO_EVENT'
+          iv_value = io_event
+      ).
+    ENDIF.
+
+
     open_popup( lo_event_data ).
   ENDMETHOD.
 
@@ -178,6 +205,15 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         iv_key   = 'IV_CALLBACK_EVENT_ID'
         iv_value = iv_callback_event_id
     ).
+
+    IF io_event IS NOT INITIAL.
+      lo_event_data->set_value(
+        EXPORTING
+          iv_key   = 'IO_EVENT'
+          iv_value = io_event
+      ).
+    ENDIF.
+
 
     lo_event_data->set_value(
       EXPORTING
@@ -269,6 +305,11 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD on_close.
+    mo_comp_usage->delete_component( ).
+  ENDMETHOD.
+
+
   METHOD on_ok.
     DATA: lv_date_range TYPE flag,
           lt_date_range TYPE date_t_range.
@@ -333,22 +374,22 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
   METHOD open_popup.
     DATA: lo_comp_usage TYPE REF TO if_wd_component_usage.
 
-    IF go_wd_comp IS INITIAL.
-      cl_wdr_runtime_services=>get_component_usage(
-        EXPORTING
-          component            = wdr_task=>application->component
-          used_component_name  = gv_wd_comp_id
-          component_usage_name = gv_wd_comp_id
-          create_component     = abap_true
-          do_create            = abap_true
-        RECEIVING
-          component_usage      = lo_comp_usage
-      ).
-      go_wd_comp ?= lo_comp_usage->get_interface_controller( ).
-    ENDIF.
+    cl_wdr_runtime_services=>get_component_usage(
+      EXPORTING
+        component            = wdr_task=>application->component
+        used_component_name  = gv_wd_comp_id
+        component_usage_name = gv_wd_comp_id
+        create_component     = abap_true
+        do_create            = abap_true
+      RECEIVING
+        component_usage      = lo_comp_usage
+    ).
+
+    go_wd_comp ?= lo_comp_usage->get_interface_controller( ).
 
     go_wd_comp->open_popup(
         io_event_data = io_event_data
+        io_comp_usage = lo_comp_usage
     ).
   ENDMETHOD.
 
