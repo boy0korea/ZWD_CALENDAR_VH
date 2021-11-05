@@ -50,6 +50,7 @@ CLASS zcl_zwd_calendar_vh DEFINITION
         !io_context   TYPE REF TO if_wd_context_node .
   PROTECTED SECTION.
 
+    CLASS-METHODS readme .
     CLASS-METHODS wd_set_vh_recur
       IMPORTING
         !io_node_info TYPE REF TO if_wd_context_node_info .
@@ -391,6 +392,11 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         io_event_data = io_event_data
         io_comp_usage = lo_comp_usage
     ).
+  ENDMETHOD.
+
+
+  METHOD readme.
+* https://github.com/boy0korea/ZWD_CALENDAR_VH
   ENDMETHOD.
 
 
