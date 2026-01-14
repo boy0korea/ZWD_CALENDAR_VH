@@ -64,7 +64,10 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
 
   METHOD class_constructor.
-    gv_wd_comp_id = CAST cl_abap_refdescr( cl_abap_typedescr=>describe_by_data( go_wd_comp ) )->get_referenced_type( )->get_relative_name( ).
+*    gv_wd_comp_id = CAST cl_abap_refdescr( cl_abap_typedescr=>describe_by_data( go_wd_comp ) )->get_referenced_type( )->get_relative_name( ).
+    DATA: lo_ref TYPE REF TO cl_abap_refdescr.
+    lo_ref ?= cl_abap_typedescr=>describe_by_data( go_wd_comp ).
+    gv_wd_comp_id = lo_ref->get_referenced_type( )->get_relative_name( ).
     REPLACE 'IWCI_' IN gv_wd_comp_id WITH ''.
   ENDMETHOD.
 
@@ -78,6 +81,7 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
           lv_key         TYPE string,
           lr_value       TYPE REF TO data,
           lv_action      TYPE string,
+          lx_wdr_runtime TYPE REF TO cx_wdr_runtime,
           lo_view        TYPE REF TO cl_wdr_view,
           lo_action      TYPE REF TO if_wdr_action,
           lt_param       TYPE wdr_name_value_list,
@@ -139,7 +143,7 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
       TRY.
           lo_action = lo_view->get_action_internal( lv_action ).
-        CATCH cx_wdr_runtime INTO DATA(lx_wdr_runtime).
+        CATCH cx_wdr_runtime INTO lx_wdr_runtime.
           wdr_task=>application->component->if_wd_controller~get_message_manager( )->report_error_message( lx_wdr_runtime->get_text( ) ).
       ENDTRY.
       CHECK: lo_action IS NOT INITIAL.
@@ -228,26 +232,32 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
   METHOD fpm_set_vh_to_all.
     DATA: lo_rtti               TYPE REF TO cl_abap_structdescr,
+          lo_rtti_t             TYPE REF TO cl_abap_tabledescr,
+          ls_comp               TYPE abap_compdescr,
           lt_field_descr_form	  TYPE fpmgb_t_formfield_descr,
           lt_field_descr_list	  TYPE fpmgb_t_listfield_descr,
           lt_field_descr_tree	  TYPE fpmgb_t_treefield_descr,
           lt_field_descr_search	TYPE fpmgb_t_searchfield_descr.
-
+    FIELD-SYMBOLS: <ls_fd_form>   TYPE fpmgb_s_formfield_descr,
+                   <ls_fd_list>   TYPE fpmgb_s_listfield_descr,
+                   <ls_fd_tree>   TYPE fpmgb_s_treefield_descr,
+                   <ls_fd_search> TYPE fpmgb_s_searchfield_descr.
     " rtti
     CASE io_field_catalog->type_kind.
       WHEN cl_abap_typedescr=>typekind_struct1
         OR cl_abap_typedescr=>typekind_struct2.
         lo_rtti ?= io_field_catalog.
       WHEN cl_abap_typedescr=>typekind_table.
-        lo_rtti ?= CAST cl_abap_tabledescr( io_field_catalog )->get_table_line_type( ).
+        lo_rtti_t ?= io_field_catalog.
+        lo_rtti ?= lo_rtti_t->get_table_line_type( ).
       WHEN OTHERS.
     ENDCASE.
 
 
     " loop comp
-    LOOP AT lo_rtti->components INTO DATA(ls_comp) WHERE type_kind = cl_abap_typedescr=>typekind_date.
+    LOOP AT lo_rtti->components INTO ls_comp WHERE type_kind = cl_abap_typedescr=>typekind_date.
       IF ct_field_descr_form IS SUPPLIED.
-        READ TABLE ct_field_descr_form ASSIGNING FIELD-SYMBOL(<ls_fd_form>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        READ TABLE ct_field_descr_form ASSIGNING <ls_fd_form> WITH KEY primary_key COMPONENTS name = ls_comp-name.
         IF sy-subrc EQ 0.
           <ls_fd_form>-wd_value_help = gv_wd_comp_id.
         ELSE.
@@ -257,7 +267,7 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         ENDIF.
       ENDIF.
       IF ct_field_descr_list IS SUPPLIED.
-        READ TABLE ct_field_descr_list ASSIGNING FIELD-SYMBOL(<ls_fd_list>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        READ TABLE ct_field_descr_list ASSIGNING <ls_fd_list> WITH KEY primary_key COMPONENTS name = ls_comp-name.
         IF sy-subrc EQ 0.
           <ls_fd_list>-wd_value_help = gv_wd_comp_id.
         ELSE.
@@ -267,7 +277,7 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         ENDIF.
       ENDIF.
       IF ct_field_descr_tree IS SUPPLIED.
-        READ TABLE ct_field_descr_tree ASSIGNING FIELD-SYMBOL(<ls_fd_tree>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        READ TABLE ct_field_descr_tree ASSIGNING <ls_fd_tree> WITH KEY primary_key COMPONENTS name = ls_comp-name.
         IF sy-subrc EQ 0.
           <ls_fd_tree>-wd_value_help = gv_wd_comp_id.
         ELSE.
@@ -277,7 +287,7 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         ENDIF.
       ENDIF.
       IF ct_field_descr_search IS SUPPLIED.
-        READ TABLE ct_field_descr_search ASSIGNING FIELD-SYMBOL(<ls_fd_search>) WITH KEY primary_key COMPONENTS name = ls_comp-name.
+        READ TABLE ct_field_descr_search ASSIGNING <ls_fd_search> WITH KEY primary_key COMPONENTS name = ls_comp-name.
         IF sy-subrc EQ 0.
           <ls_fd_search>-wd_value_help = gv_wd_comp_id.
         ELSE.
@@ -313,7 +323,8 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
   METHOD on_ok.
     DATA: lv_date_range TYPE flag,
-          lt_date_range TYPE date_t_range.
+          lt_date_range TYPE date_t_range,
+          ls_date_range TYPE date_range.
 
 
     mo_event_data->get_value(
@@ -324,9 +335,18 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
     ).
     IF lv_date_range EQ abap_true.
       IF iv_low EQ iv_high.
-        lt_date_range = VALUE #( ( sign = 'I' option = 'EQ' low = iv_low ) ).
+*        lt_date_range = VALUE #( ( SIGN = 'I' OPTION = 'EQ' LOW = iv_low ) ).
+        ls_date_range-sign = 'I'.
+        ls_date_range-option = 'EQ'.
+        ls_date_range-low = iv_low.
+        APPEND ls_date_range TO lt_date_range.
       ELSE.
-        lt_date_range = VALUE #( ( sign = 'I' option = 'BT' low = iv_low high = iv_high ) ).
+*        lt_date_range = VALUE #( ( SIGN = 'I' OPTION = 'BT' LOW = iv_low HIGH = iv_high ) ).
+        ls_date_range-sign = 'I'.
+        ls_date_range-option = 'BY'.
+        ls_date_range-low = iv_low.
+        ls_date_range-high = iv_high.
+        APPEND ls_date_range TO lt_date_range.
       ENDIF.
       mo_event_data->set_value(
         EXPORTING
@@ -347,7 +367,8 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
           ls_callstack   TYPE abap_callstack_line,
           lo_class_desc  TYPE REF TO cl_abap_classdescr,
           ls_method_desc TYPE abap_methdescr,
-          ls_param_desc  TYPE abap_parmdescr.
+          ls_param_desc  TYPE abap_parmdescr,
+          lv_string      TYPE string.
     FIELD-SYMBOLS: <lv_value> TYPE any.
 
     CALL FUNCTION 'SYSTEM_CALLSTACK'
@@ -360,9 +381,10 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
     READ TABLE lo_class_desc->methods INTO ls_method_desc WITH KEY name = ls_callstack-blockname.
     LOOP AT ls_method_desc-parameters INTO ls_param_desc WHERE parm_kind = cl_abap_classdescr=>importing.
       ASSIGN (ls_param_desc-name) TO <lv_value>.
+      lv_string = ls_param_desc-name.
       mo_event_data->set_value(
         EXPORTING
-          iv_key   = CONV #( ls_param_desc-name )
+          iv_key   = lv_string
           iv_value = <lv_value>
       ).
     ENDLOOP.
@@ -401,7 +423,8 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
 
   METHOD wd_date_popup.
-    DATA: lo_event_data TYPE REF TO if_fpm_parameter.
+    DATA: lo_event_data TYPE REF TO if_fpm_parameter,
+          lo_wdr_view   TYPE REF TO cl_wdr_view.
 
     CREATE OBJECT lo_event_data TYPE cl_fpm_parameter.
 
@@ -411,10 +434,11 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         iv_value = iv_callback_action
     ).
 
+    lo_wdr_view ?= io_view.
     lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IO_VIEW'
-        iv_value = CAST cl_wdr_view( io_view )
+        iv_value = lo_wdr_view
     ).
 
     open_popup( lo_event_data ).
@@ -422,7 +446,8 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
 
 
   METHOD wd_date_range_popup.
-    DATA: lo_event_data TYPE REF TO if_fpm_parameter.
+    DATA: lo_event_data TYPE REF TO if_fpm_parameter,
+          lo_wdr_view   TYPE REF TO cl_wdr_view.
 
     CREATE OBJECT lo_event_data TYPE cl_fpm_parameter.
 
@@ -432,10 +457,11 @@ CLASS ZCL_ZWD_CALENDAR_VH IMPLEMENTATION.
         iv_value = iv_callback_action
     ).
 
+    lo_wdr_view ?= io_view.
     lo_event_data->set_value(
       EXPORTING
         iv_key   = 'IO_VIEW'
-        iv_value = CAST cl_wdr_view( io_view )
+        iv_value = lo_wdr_view
     ).
 
     lo_event_data->set_value(
